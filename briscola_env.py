@@ -21,16 +21,20 @@ CARD_VALUES = {
 CARD_ORDER = ['2', '4', '5', '6', '7', 'J', 'Q', 'K', '3', 'A']
 
 # Semi
-SUITS = ['C', 'D', 'H', 'S']  # Coppe, Denari, Cuori, Spade
+SUITS = ['♣', '♦', '♥', '♠']  # Fiori, Quadri, Cuori, Picche
 
 def card_id(card):
     """Map card (e.g. 'AC') to unique ID 0-39"""
     value, suit = card[:-1], card[-1]
     return CARD_ORDER.index(value) + 10 * SUITS.index(suit)
 
+
 def decode_id(cid):
     """Map card ID back to string"""
+    if cid == 40:
+        return "??"  # oppure un simbolo di carta vuota
     return CARD_ORDER[cid % 10] + SUITS[cid // 10]
+
 
 def compare_cards(c1, c2, briscola):
     """Return winner: 0 if c1 wins, 1 if c2 wins"""

@@ -1,12 +1,13 @@
 import pygame
 import sys
 import random
+import time
 from stable_baselines3 import PPO
 from briscola_env import BriscolaEnv, decode_id
 
 # --- Costanti grafiche ---
 CARD_WIDTH, CARD_HEIGHT = 80, 120
-SCREEN_WIDTH, SCREEN_HEIGHT = 900, 600
+SCREEN_WIDTH, SCREEN_HEIGHT = 1100, 600  # Allargato per lo storico
 FPS = 30
 
 # --- Inizializza Pygame ---
@@ -25,7 +26,14 @@ GREEN = (34, 139, 34)
 def draw_card(surface, x, y, card_text):
     pygame.draw.rect(surface, WHITE, (x, y, CARD_WIDTH, CARD_HEIGHT))
     pygame.draw.rect(surface, BLACK, (x, y, CARD_WIDTH, CARD_HEIGHT), 2)
-    text = font.render(card_text, True, BLACK)
+
+    # Colore del testo in base al seme
+    if any(seme in card_text for seme in ["♥", "♦", "Cuori", "Quadri"]):
+        text_color = (255, 0, 0)  # rosso
+    else:
+        text_color = BLACK
+
+    text = font.render(card_text, True, text_color)
     surface.blit(text, (x + 10, y + 50))
 
 def wait_for_card_click(card_positions):
@@ -41,51 +49,91 @@ def wait_for_card_click(card_positions):
                         return idx
         clock.tick(FPS)
 
+# ... [import e setup invariati]
+
 # --- Carica modello e ambiente ---
 env = BriscolaEnv()
-model = PPO.load("briscola_agent", env=env)
+model = PPO.load("briscola_ppo", env=env)
 obs, _ = env.reset()
 done = False
+
+history = []
+last_played = [40, 40]  # Stato precedente delle carte giocate
 
 # --- Main loop ---
 while not done:
     screen.fill(GREEN)
 
-    current_player = env.current_player
+    # Informazioni partita
     screen.blit(font.render(f"Briscola: {env.briscola} (carta: {env.visible_briscola})", True, WHITE), (20, 20))
     screen.blit(font.render(f"Punteggio: TU {env.scores[1]} - BOT {env.scores[0]}", True, WHITE), (20, 60))
 
+    # Mostra carte in tavola
+    played = obs['played']
+    if played[0] < 40:
+        draw_card(screen, 200, 200, decode_id(played[0]))
+    if played[1] < 40:
+        draw_card(screen, 400, 200, decode_id(played[1]))
+
+    # Mostra storico
+    screen.blit(font.render("Ultime giocate:", True, WHITE), (800, 20))
+    for i, (bot_card, human_card) in enumerate(history):
+        text = font.render(f"BOT: {bot_card}  TU: {human_card}", True, WHITE)
+        screen.blit(text, (800, 60 + i * 30))
+
+    pygame.display.flip()
+
+    current_player = env.current_player
+
     if current_player == 0:
-        # BOT
+        # Turno del BOT
+        time.sleep(3)
         action, _ = model.predict(obs, deterministic=True)
         obs, _, done, _, _ = env.step(action)
     else:
-        # UMANO
+        # Turno dell'utente
         screen.blit(font.render("Tocca a te! Clicca su una carta.", True, WHITE), (20, 500))
-
         hand = obs['hand']
         card_positions = []
         for i, cid in enumerate(hand):
-            if cid >= 0:
+            if 0 <= cid < 40:
                 card = decode_id(cid)
                 x = 200 + i * (CARD_WIDTH + 20)
                 y = 350
                 draw_card(screen, x, y, card)
                 card_positions.append((x, y))
-
         pygame.display.flip()
         action = wait_for_card_click(card_positions)
         obs, _, done, _, _ = env.step(action)
 
-    # Mostra carte giocate
+    # Dopo ogni mossa aggiorna lo schermo con le carte giocate
+    screen.fill(GREEN)
+    screen.blit(font.render(f"Briscola: {env.briscola} (carta: {env.visible_briscola})", True, WHITE), (20, 20))
+    screen.blit(font.render(f"Punteggio: TU {env.scores[1]} - BOT {env.scores[0]}", True, WHITE), (20, 60))
+
     played = obs['played']
-    if played[0] >= 0:
+    if played[0] < 40:
         draw_card(screen, 200, 200, decode_id(played[0]))
-    if played[1] >= 0:
+    if played[1] < 40:
         draw_card(screen, 400, 200, decode_id(played[1]))
+
+    # Mostra storico
+    screen.blit(font.render("Ultime giocate:", True, WHITE), (800, 20))
+    for i, (bot_card, human_card) in enumerate(history):
+        text = font.render(f"BOT: {bot_card}  TU: {human_card}", True, WHITE)
+        screen.blit(text, (800, 60 + i * 30))
 
     pygame.display.flip()
     clock.tick(FPS)
+
+    # Se la mano è appena finita
+    if last_played[0] < 40 and last_played[1] < 40 and played == [40, 40]:
+        history.insert(0, (decode_id(last_played[0]), decode_id(last_played[1])))
+        history = history[:5]
+        # Pausa per mostrare cosa è stato giocato
+        time.sleep(3)
+
+    last_played = played.copy()
 
 # --- Fine partita ---
 screen.fill(GREEN)
